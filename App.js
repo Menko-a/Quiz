@@ -21,6 +21,7 @@ export default function App() {
 		});
 	};
 
+	const [activeTab, setActiveTab] = useState("preview"); // preview | settings
 	const [stage, setStage] = useState("home"); // home | quiz | results
 	const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
 	const [userAnswers, setUserAnswers] = useState([]);
@@ -105,21 +106,51 @@ export default function App() {
 
 	return (
 		<View style={[styles.container, { backgroundColor: isDarkMode ? "#111" : "#fff" }]}>
-			{stage === "home" && <Home onStart={startQuiz} isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} />}
-			{stage === "quiz" && (
-				<Quiz
+			{/* Tab Navigation */}
+			<View style={styles.tabContainer}>
+				<TouchableOpacity style={[styles.tab, activeTab === "preview" && styles.activeTab]} onPress={() => setActiveTab("preview")}>
+					<Text style={[styles.tabText, { color: isDarkMode ? "#fff" : "#333" }]}>Preview Quiz</Text>
+				</TouchableOpacity>
+				<TouchableOpacity style={[styles.tab, activeTab === "settings" && styles.activeTab]} onPress={() => setActiveTab("settings")}>
+					<Text style={[styles.tabText, { color: isDarkMode ? "#fff" : "#333" }]}>Quiz Settings</Text>
+				</TouchableOpacity>
+			</View>
+
+			{/* Preview Quiz Tab */}
+			{activeTab === "preview" && (
+				<View style={styles.tabContent}>
+					{stage === "home" && <Home onStart={startQuiz} isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} />}
+					{stage === "quiz" && (
+						<Quiz
+							isDarkMode={isDarkMode}
+							question={quizQuestions[currentQuestionIndex]}
+							questionNumber={currentQuestionIndex + 1}
+							total={quizQuestions.length}
+							selected={userAnswers[currentQuestionIndex]}
+							onSelect={handleAnswer}
+							onNext={nextQuestion}
+							onPrev={prevQuestion}
+							timeLeft={timeLeft}
+						/>
+					)}
+					{stage === "results" && (
+						<Results isDarkMode={isDarkMode} score={calculateScore()} total={quizQuestions.length} highest={highestScore} onRetry={retry} />
+					)}
+				</View>
+			)}
+
+			{/* Quiz Settings Tab */}
+			{activeTab === "settings" && (
+				<QuizSettings
 					isDarkMode={isDarkMode}
-					question={quizQuestions[currentQuestionIndex]}
-					questionNumber={currentQuestionIndex + 1}
-					total={quizQuestions.length}
-					selected={userAnswers[currentQuestionIndex]}
-					onSelect={handleAnswer}
-					onNext={nextQuestion}
-					onPrev={prevQuestion}
-					timeLeft={timeLeft}
+					quizQuestions={quizQuestions}
+					timerSeconds={timerSeconds}
+					setTimerSeconds={setTimerSeconds}
+					addQuestion={addQuestion}
+					updateQuestion={updateQuestion}
+					deleteQuestion={deleteQuestion}
 				/>
 			)}
-			{stage === "results" && <Results isDarkMode={isDarkMode} score={calculateScore()} total={quizQuestions.length} highest={highestScore} onRetry={retry} />}
 		</View>
 	);
 }
@@ -128,6 +159,7 @@ function Home({ onStart, isDarkMode, setIsDarkMode }) {
 	return (
 		<View style={styles.homeContainer}>
 			<Text style={[styles.title, { color: isDarkMode ? "#fff" : "#333" }]}>Welcome to the Quiz</Text>
+			<Text style={[styles.timerDisplay, { color: isDarkMode ? "#fff" : "#333" }]}>Timer: 60 seconds</Text>
 			<View style={styles.buttonRow}>
 				<Button title={isDarkMode ? "Light Mode" : "Dark Mode"} onPress={() => setIsDarkMode((v) => !v)} />
 				<Button title="Start Quiz" onPress={onStart} />
@@ -142,7 +174,7 @@ function Quiz({ isDarkMode, question, questionNumber, total, selected, onSelect,
 			<Text style={[styles.title, { color: isDarkMode ? "#fff" : "#333" }]}>
 				Question {questionNumber} of {total}
 			</Text>
-			<Text style={{ color: isDarkMode ? "#fff" : "#333" }}>Time left: {timeLeft}s</Text>
+			<Text style={[styles.timerDisplay, { color: timeLeft <= 10 ? "#ff4444" : isDarkMode ? "#fff" : "#333" }]}>Time left: {timeLeft}s</Text>
 			<Text style={[styles.question, { color: isDarkMode ? "#fff" : "#333" }]}>{question.question}</Text>
 			<View style={styles.choices}>
 				{question.choices.map((c, idx) => (
@@ -162,47 +194,112 @@ function Quiz({ isDarkMode, question, questionNumber, total, selected, onSelect,
 	);
 }
 
-function QuizSettings({ quizQuestions, timerSeconds, setTimerSeconds, addQuestion, deleteQuestion }) {
+function QuizSettings({ isDarkMode, quizQuestions, timerSeconds, setTimerSeconds, addQuestion, updateQuestion, deleteQuestion }) {
 	const [temp, setTemp] = useState({ question: "", choices: ["", "", ""], answer: 0 });
+	const [editingIndex, setEditingIndex] = useState(-1);
 
 	const save = () => {
-		addQuestion(temp);
+		if (editingIndex >= 0) {
+			updateQuestion(editingIndex, temp);
+			setEditingIndex(-1);
+		} else {
+			addQuestion(temp);
+		}
 		setTemp({ question: "", choices: ["", "", ""], answer: 0 });
 	};
 
+	const editQuestion = (item, index) => {
+		setTemp({ ...item });
+		setEditingIndex(index);
+	};
+
+	const cancelEdit = () => {
+		setTemp({ question: "", choices: ["", "", ""], answer: 0 });
+		setEditingIndex(-1);
+	};
+
 	return (
-		<View style={styles.settings}>
-			<Text style={styles.subtitle}>Quiz Settings</Text>
-			<Text>Timer (seconds):</Text>
-			<TextInput keyboardType="numeric" value={String(timerSeconds)} onChangeText={(t) => setTimerSeconds(parseInt(t) || 0)} style={styles.input} />
-			<FlatList
-				data={quizQuestions}
-				keyExtractor={(_, idx) => String(idx)}
-				renderItem={({ item, index: idx }) => (
-					<View style={styles.questionRow}>
-						<Text style={{ flex: 1 }} numberOfLines={1}>
-							{item.question}
-						</Text>
+		<ScrollView contentContainerStyle={styles.settingsContainer}>
+			<Text style={[styles.title, { color: isDarkMode ? "#fff" : "#333" }]}>Quiz Settings</Text>
+
+			{/* Timer Settings */}
+			<View style={styles.settings}>
+				<Text style={[styles.subtitle, { color: isDarkMode ? "#fff" : "#333" }]}>Timer Settings</Text>
+				<Text style={{ color: isDarkMode ? "#fff" : "#333" }}>Quiz Duration (seconds):</Text>
+				<TextInput
+					keyboardType="numeric"
+					value={String(timerSeconds)}
+					onChangeText={(t) => setTimerSeconds(parseInt(t) || 0)}
+					style={[
+						styles.input,
+						{ backgroundColor: isDarkMode ? "#333" : "#fff", color: isDarkMode ? "#fff" : "#333", borderColor: isDarkMode ? "#555" : "#ccc" },
+					]}
+				/>
+			</View>
+
+			{/* Question List */}
+			<View style={styles.settings}>
+				<Text style={[styles.subtitle, { color: isDarkMode ? "#fff" : "#333" }]}>Questions ({quizQuestions.length})</Text>
+				{quizQuestions.map((item, idx) => (
+					<View key={idx} style={styles.questionRow}>
+						<View style={{ flex: 1 }}>
+							<Text style={{ color: isDarkMode ? "#fff" : "#333", fontWeight: "bold" }} numberOfLines={1}>
+								{idx + 1}. {item.question}
+							</Text>
+							<Text style={{ color: isDarkMode ? "#aaa" : "#666", fontSize: 12 }} numberOfLines={1}>
+								Answer: {item.choices[item.answer]}
+							</Text>
+						</View>
 						<View style={styles.actionButtons}>
-							<Button title="Delete" onPress={() => deleteQuestion(idx)} />
+							<Button title="Edit" onPress={() => editQuestion(item, idx)} />
+							<Button title="Delete" onPress={() => deleteQuestion(idx)} color="#ff4444" />
 						</View>
 					</View>
-				)}
-			/>
-			<TextInput placeholder="Question" value={temp.question} onChangeText={(t) => setTemp({ ...temp, question: t })} style={styles.input} />
-			{temp.choices.map((c, i) => (
+				))}
+			</View>
+
+			{/* Add/Edit Question Form */}
+			<View style={styles.settings}>
+				<Text style={[styles.subtitle, { color: isDarkMode ? "#fff" : "#333" }]}>
+					{editingIndex >= 0 ? `Edit Question ${editingIndex + 1}` : "Add New Question"}
+				</Text>
 				<TextInput
-					key={i}
-					placeholder={`Choice ${i + 1}`}
-					value={c}
-					onChangeText={(t) => setTemp({ ...temp, choices: temp.choices.map((v, j) => (j === i ? t : v)) })}
-					style={styles.input}
+					placeholder="Question"
+					value={temp.question}
+					onChangeText={(t) => setTemp({ ...temp, question: t })}
+					style={[
+						styles.input,
+						{ backgroundColor: isDarkMode ? "#333" : "#fff", color: isDarkMode ? "#fff" : "#333", borderColor: isDarkMode ? "#555" : "#ccc" },
+					]}
 				/>
-			))}
-			<Text>Correct answer index (0-based):</Text>
-			<TextInput keyboardType="numeric" value={String(temp.answer)} onChangeText={(t) => setTemp({ ...temp, answer: parseInt(t) || 0 })} style={styles.input} />
-			<Button title="Add" onPress={save} />
-		</View>
+				{temp.choices.map((c, i) => (
+					<TextInput
+						key={i}
+						placeholder={`Choice ${i + 1}`}
+						value={c}
+						onChangeText={(t) => setTemp({ ...temp, choices: temp.choices.map((v, j) => (j === i ? t : v)) })}
+						style={[
+							styles.input,
+							{ backgroundColor: isDarkMode ? "#333" : "#fff", color: isDarkMode ? "#fff" : "#333", borderColor: isDarkMode ? "#555" : "#ccc" },
+						]}
+					/>
+				))}
+				<Text style={{ color: isDarkMode ? "#fff" : "#333" }}>Correct answer index (0-based):</Text>
+				<TextInput
+					keyboardType="numeric"
+					value={String(temp.answer)}
+					onChangeText={(t) => setTemp({ ...temp, answer: parseInt(t) || 0 })}
+					style={[
+						styles.input,
+						{ backgroundColor: isDarkMode ? "#333" : "#fff", color: isDarkMode ? "#fff" : "#333", borderColor: isDarkMode ? "#555" : "#ccc" },
+					]}
+				/>
+				<View style={styles.formButtons}>
+					<Button title={editingIndex >= 0 ? "Update" : "Add Question"} onPress={save} />
+					{editingIndex >= 0 && <Button title="Cancel" onPress={cancelEdit} color="#ff4444" />}
+				</View>
+			</View>
+		</ScrollView>
 	);
 }
 
@@ -228,6 +325,31 @@ const styles = StyleSheet.create({
 		justifyContent: "center",
 		padding: 20,
 	},
+	tabContainer: {
+		flexDirection: "row",
+		width: "100%",
+		marginBottom: 20,
+		borderBottomWidth: 2,
+		borderBottomColor: "#ccc",
+	},
+	tab: {
+		flex: 1,
+		padding: 15,
+		alignItems: "center",
+	},
+	activeTab: {
+		borderBottomWidth: 3,
+		borderBottomColor: "#007bff",
+	},
+	tabText: {
+		fontSize: 16,
+		fontWeight: "bold",
+	},
+	tabContent: {
+		flex: 1,
+		width: "100%",
+		alignItems: "center",
+	},
 	screen: {
 		width: "100%",
 		alignItems: "center",
@@ -241,6 +363,10 @@ const styles = StyleSheet.create({
 	title: {
 		fontSize: 24,
 		marginBottom: 20,
+	},
+	timerDisplay: {
+		fontSize: 20,
+		marginBottom: 10,
 	},
 	subtitle: {
 		fontSize: 20,
@@ -269,18 +395,18 @@ const styles = StyleSheet.create({
 		justifyContent: "space-between",
 		width: "100%",
 	},
+	settingsContainer: {
+		flex: 1,
+		width: "100%",
+		paddingBottom: 20,
+	},
 	settings: {
 		width: "100%",
-		marginTop: 20,
-		padding: 10,
+		padding: 15,
+		marginBottom: 15,
 		borderWidth: 1,
 		borderColor: "#999",
 		borderRadius: 5,
-	},
-	row: {
-		flexDirection: "row",
-		justifyContent: "flex-end",
-		width: "100%",
 	},
 	buttonRow: {
 		flexDirection: "row",
@@ -292,19 +418,26 @@ const styles = StyleSheet.create({
 		width: "100%",
 		borderWidth: 1,
 		borderColor: "#ccc",
-		padding: 5,
+		padding: 8,
 		marginVertical: 5,
+		borderRadius: 4,
 	},
 	questionRow: {
 		flexDirection: "row",
 		justifyContent: "space-between",
 		alignItems: "center",
-		marginVertical: 5,
+		marginVertical: 8,
 		paddingRight: 5,
 	},
 	actionButtons: {
 		flexDirection: "row",
 		justifyContent: "flex-end",
-		width: 80,
+		gap: 5,
+	},
+	formButtons: {
+		flexDirection: "row",
+		justifyContent: "center",
+		gap: 10,
+		marginTop: 10,
 	},
 });
