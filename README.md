@@ -23,7 +23,7 @@ This is a quiz application built with React Hooks targeting Expo (works on iOS/A
    npm install
    # or yarn
    yarn
-   ```
+   ```a
 2. Start Expo:
    ```bash
    npm run start
